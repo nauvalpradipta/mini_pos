@@ -1,7 +1,7 @@
 import 'package:path/path.dart' as path;
 import 'package:sqflite/sqflite.dart';
 
-import 'database_tables.dart';
+import 'database_schema.dart';
 
 /// Manages the local SQLite database connection.
 class AppDatabase {
@@ -46,30 +46,9 @@ class AppDatabase {
     );
   }
 
-  /// Creates tables, indexes, and default settings.
+  /// Creates the database schema for a new database.
   Future<void> _onCreate(Database db, int version) async {
-    // Create database tables.
-    for (final statement in DatabaseTables.createStatements) {
-      await db.execute(statement);
-    }
-
-    // Create database indexes.
-    for (final statement in DatabaseTables.indexStatements) {
-      await db.execute(statement);
-    }
-
-    // Insert default store settings.
-    final now = DateTime.now().millisecondsSinceEpoch;
-
-    await db.insert(DatabaseTables.appSettings, {
-      'id': 1,
-      'store_name': 'KASIRKU POS',
-      'address': '',
-      'phone': '',
-      'receipt_footer': 'Thank you for your purchase!',
-      'created_at': now,
-      'updated_at': now,
-    });
+    await DatabaseSchema.create(db);
   }
 
   /// Retrieves the names of application tables.
