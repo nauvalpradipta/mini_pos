@@ -331,5 +331,42 @@ void main() {
         throwsStateError,
       );
     });
+
+    test('reactivates an add-on without losing its product relation', () async {
+      final addon = await addonRepository.create(
+        name: 'Extra Shot',
+        additionalPrice: 5000,
+        stock: 30,
+      );
+
+      await addonRepository.setForProduct(
+        productId: productId,
+        addonIds: [addon.id!],
+      );
+
+      await addonRepository.deactivate(addon.id!);
+
+      await addonRepository.activate(addon.id!);
+
+      final reactivatedAddon = await addonRepository.getById(addon.id!);
+
+      expect(reactivatedAddon, isNotNull);
+      expect(reactivatedAddon!.id, addon.id);
+      expect(reactivatedAddon.name, 'Extra Shot');
+      expect(reactivatedAddon.additionalPrice, 5000);
+      expect(reactivatedAddon.stock, 30);
+      expect(reactivatedAddon.isActive, isTrue);
+
+      final relatedAddons = await addonRepository.getForProduct(
+        productId: productId,
+      );
+
+      expect(relatedAddons.length, 1);
+      expect(relatedAddons.first.id, addon.id);
+    });
+
+    test('throws when reactivating a nonexistent add-on', () async {
+      await expectLater(addonRepository.activate(999), throwsStateError);
+    });
   });
 }

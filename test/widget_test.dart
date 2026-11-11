@@ -14,6 +14,8 @@ import 'package:mini_pos/features/auth/repositories/auth_repository.dart';
 import 'package:mini_pos/features/auth/services/session_service.dart';
 import 'package:mini_pos/features/auth/viewmodels/auth_view_model.dart';
 import 'package:mini_pos/features/auth/views/login_view.dart';
+import 'package:mini_pos/features/products/repositories/addon_repository.dart';
+import 'package:mini_pos/features/products/viewmodels/addon_management_view_model.dart';
 
 // Fake repository untuk pengujian integrasi UI.
 class FakeAuthRepository implements AuthRepository {
@@ -99,6 +101,7 @@ void main() {
 
   late Database database;
   late ProductManagementViewModel productManagementViewModel;
+  late AddonManagementViewModel addonManagementViewModel;
 
   setUpAll(() {
     sqfliteFfiInit();
@@ -134,11 +137,16 @@ void main() {
       categoryRepository,
       productRepository,
     );
+
+    final addonRepository = AddonRepository(database);
+
+    addonManagementViewModel = AddonManagementViewModel(addonRepository);
   });
 
   tearDown(() async {
     authViewModel.dispose();
     productManagementViewModel.dispose();
+    addonManagementViewModel.dispose();
     await database.close();
   });
 
@@ -147,6 +155,7 @@ void main() {
     // SQLite FFI requires a real async zone in widget tests.
     await tester.runAsync(() async {
       await productManagementViewModel.load();
+      await addonManagementViewModel.load();
     });
 
     await tester.pumpWidget(
@@ -155,6 +164,9 @@ void main() {
           ChangeNotifierProvider<AuthViewModel>.value(value: authViewModel),
           ChangeNotifierProvider<ProductManagementViewModel>.value(
             value: productManagementViewModel,
+          ),
+          ChangeNotifierProvider<AddonManagementViewModel>.value(
+            value: addonManagementViewModel,
           ),
         ],
         child: const KasirkuApp(),

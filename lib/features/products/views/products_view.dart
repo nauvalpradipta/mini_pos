@@ -8,6 +8,9 @@ import '../services/product_image_service.dart';
 import '../viewmodels/product_management_view_model.dart';
 import 'category_management_view.dart';
 import 'product_form_dialog.dart';
+import 'addon_management_view.dart';
+import '../viewmodels/addon_management_view_model.dart';
+import 'product_addon_assignment_dialog.dart';
 
 class ProductsView extends StatefulWidget {
   const ProductsView({super.key, this.loadOnInit = true, this.imageService});
@@ -53,6 +56,67 @@ class _ProductsViewState extends State<ProductsView> {
     if (!mounted) return;
 
     await context.read<ProductManagementViewModel>().refresh();
+  }
+
+  Future<void> _openAddonManagement() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(builder: (_) => const AddonManagementView()),
+    );
+  }
+
+  Future<void> _openProductAddonAssignment(Product product) async {
+    final addonViewModel = context.read<AddonManagementViewModel>();
+
+    if (addonViewModel.isSaving || addonViewModel.isLoadingAssignments) {
+      return;
+    }
+
+    addonViewModel.clearMessages();
+
+    try {
+      await addonViewModel.ensureLoaded();
+
+      if (!mounted) return;
+
+      if (addonViewModel.errorMessage != null) {
+        _showAddonFeedback(false);
+        return;
+      }
+
+      final assignedAddons = await addonViewModel.getAssignedAddons(
+        product.id!,
+      );
+
+      if (!mounted) return;
+
+      final result = await showDialog<Set<int>>(
+        context: context,
+        builder: (_) => ProductAddonAssignmentDialog(
+          product: product,
+          addons: addonViewModel.availableAddons,
+          initialAddonIds: assignedAddons.map((addon) => addon.id!).toSet(),
+        ),
+      );
+
+      if (result == null || !mounted) return;
+
+      addonViewModel.clearMessages();
+
+      final success = await addonViewModel.assignAddonsToProduct(
+        productId: product.id!,
+        addonIds: result.toList(),
+      );
+
+      if (!mounted) return;
+
+      _showAddonFeedback(success);
+    } catch (_) {
+      if (!mounted) return;
+
+      _showFeedbackMessage(
+        'Tidak dapat memuat pilihan add-on. Silakan coba lagi.',
+      );
+    }
   }
 
   Future<void> _showProductForm({Product? product}) async {
@@ -238,6 +302,16 @@ class _ProductsViewState extends State<ProductsView> {
     }
   }
 
+  void _showAddonFeedback(bool success) {
+    final viewModel = context.read<AddonManagementViewModel>();
+
+    final message = success ? viewModel.successMessage : viewModel.errorMessage;
+
+    if (message != null) {
+      _showFeedbackMessage(message);
+    }
+  }
+
   void _showFeedbackMessage(String message) {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
@@ -317,6 +391,10 @@ class _ProductsViewState extends State<ProductsView> {
           const SizedBox(height: 20),
 
           _buildCategoryCard(theme, colorScheme),
+
+          const SizedBox(height: 12),
+
+          _buildAddonCard(theme, colorScheme),
 
           const SizedBox(height: 24),
 
@@ -415,6 +493,49 @@ class _ProductsViewState extends State<ProductsView> {
             IconButton(
               tooltip: 'Kelola Kategori',
               onPressed: _openCategoryManagement,
+              icon: const Icon(Icons.arrow_forward_ios, size: 18),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAddonCard(ThemeData theme, ColorScheme colorScheme) {
+    return Card(
+      elevation: 0,
+      color: colorScheme.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+        side: BorderSide(color: colorScheme.outlineVariant),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          children: [
+            CircleAvatar(
+              backgroundColor: colorScheme.secondaryContainer,
+              child: Icon(Icons.tune, color: colorScheme.onSecondaryContainer),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Add-on Produk', style: theme.textTheme.titleSmall),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Kelola tambahan seperti extra cheese dan extra shot.',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            IconButton(
+              tooltip: 'Kelola Add-on',
+              onPressed: _openAddonManagement,
               icon: const Icon(Icons.arrow_forward_ios, size: 18),
             ),
           ],
@@ -655,6 +776,13 @@ class _ProductsViewState extends State<ProductsView> {
 
             Column(
               children: [
+                IconButton(
+                  tooltip: 'Atur add-on',
+                  onPressed: viewModel.isSaving
+                      ? null
+                      : () => _openProductAddonAssignment(product),
+                  icon: const Icon(Icons.tune_outlined),
+                ),
                 IconButton(
                   tooltip: 'Edit produk',
                   onPressed: viewModel.isSaving

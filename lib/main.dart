@@ -11,6 +11,8 @@ import 'features/auth/viewmodels/auth_view_model.dart';
 import 'features/products/repositories/category_repository.dart';
 import 'features/products/repositories/product_repository.dart';
 import 'features/products/viewmodels/product_management_view_model.dart';
+import 'features/products/repositories/addon_repository.dart';
+import 'features/products/viewmodels/addon_management_view_model.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -31,6 +33,7 @@ Future<void> main() async {
   // 4. Initialize product management repositories.
   final categoryRepository = CategoryRepository(database);
   final productRepository = ProductRepository(database);
+  final addonRepository = AddonRepository(database);
 
   // 5. Create ViewModels.
   final authViewModel = AuthViewModel(authRepository, sessionService);
@@ -43,6 +46,9 @@ Future<void> main() async {
         ChangeNotifierProvider<ProductManagementViewModel>(
           create: (_) =>
               ProductManagementViewModel(categoryRepository, productRepository),
+        ),
+        ChangeNotifierProvider<AddonManagementViewModel>(
+          create: (_) => AddonManagementViewModel(addonRepository),
         ),
       ],
       child: const KasirkuApp(),

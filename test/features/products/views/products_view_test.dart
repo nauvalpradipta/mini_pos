@@ -12,6 +12,8 @@ import 'package:mini_pos/features/products/repositories/product_repository.dart'
 import 'package:mini_pos/features/products/services/product_image_service.dart';
 import 'package:mini_pos/features/products/viewmodels/product_management_view_model.dart';
 import 'package:mini_pos/features/products/views/products_view.dart';
+import 'package:mini_pos/features/products/repositories/addon_repository.dart';
+import 'package:mini_pos/features/products/viewmodels/addon_management_view_model.dart';
 
 void main() {
   late Database database;
@@ -20,6 +22,8 @@ void main() {
   late ProductManagementViewModel viewModel;
   late ProductImageService imageService;
   late Directory temporaryDirectory;
+  late AddonRepository addonRepository;
+  late AddonManagementViewModel addonViewModel;
 
   late int foodCategoryId;
   late int drinkCategoryId;
@@ -44,6 +48,8 @@ void main() {
 
     categoryRepository = CategoryRepository(database);
     productRepository = ProductRepository(database);
+    addonRepository = AddonRepository(database);
+    addonViewModel = AddonManagementViewModel(addonRepository);
 
     viewModel = ProductManagementViewModel(
       categoryRepository,
@@ -61,6 +67,7 @@ void main() {
 
   tearDown(() async {
     viewModel.dispose();
+    addonViewModel.dispose();
     await database.close();
 
     if (await temporaryDirectory.exists()) {
@@ -92,8 +99,15 @@ void main() {
   }
 
   Widget buildTestApp() {
-    return ChangeNotifierProvider<ProductManagementViewModel>.value(
-      value: viewModel,
+    return MultiProvider(
+      providers: [
+        ChangeNotifierProvider<ProductManagementViewModel>.value(
+          value: viewModel,
+        ),
+        ChangeNotifierProvider<AddonManagementViewModel>.value(
+          value: addonViewModel,
+        ),
+      ],
       child: MaterialApp(
         home: Scaffold(
           body: ProductsView(loadOnInit: false, imageService: imageService),
@@ -105,6 +119,7 @@ void main() {
   Future<void> pumpProductsView(WidgetTester tester) async {
     await tester.runAsync(() async {
       await viewModel.load();
+      await addonViewModel.load();
     });
 
     expect(viewModel.isLoading, isFalse);
@@ -137,6 +152,28 @@ void main() {
       isFalse,
       reason: 'Product mutation did not finish within 5 seconds.',
     );
+  }
+
+  Future<void> waitForAssignmentLoading(WidgetTester tester) async {
+    await tester.runAsync(() async {
+      for (
+        var attempt = 0;
+        attempt < 500 && addonViewModel.isLoadingAssignments;
+        attempt++
+      ) {
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+      }
+    });
+
+    await tester.pump();
+
+    expect(
+      addonViewModel.isLoadingAssignments,
+      isFalse,
+      reason: 'Assignment loading did not finish within 5 seconds.',
+    );
+
+    await tester.pumpAndSettle();
   }
 
   Future<void> waitForDuplicateCheck(WidgetTester tester) async {
@@ -327,6 +364,9 @@ void main() {
 
       await pumpProductsView(tester);
 
+      await tester.ensureVisible(find.byTooltip('Edit produk'));
+      await tester.pumpAndSettle();
+
       await tester.tap(find.byTooltip('Edit produk'));
       await tester.pumpAndSettle();
 
@@ -443,6 +483,136 @@ void main() {
       });
     });
 
+    testWidgets('assigns add-ons to a product through UI', (tester) async {
+      await createCategories(tester);
+
+      final product = await runDb<Product>(
+        tester,
+        () => productRepository.create(
+          categoryId: foodCategoryId,
+          name: 'Kopi Susu',
+          sellingPrice: 15000,
+          stock: 20,
+        ),
+      );
+
+      final extraShot = await runDb(
+        tester,
+        () => addonRepository.create(
+          name: 'Extra Shot',
+          additionalPrice: 5000,
+          stock: 20,
+        ),
+      );
+
+      await pumpProductsView(tester);
+
+      final assignmentButton = find.byTooltip('Atur add-on');
+
+      await tester.ensureVisible(assignmentButton);
+      await tester.pumpAndSettle();
+
+      await tester.tap(assignmentButton);
+      await tester.pump();
+
+      await waitForAssignmentLoading(tester);
+
+      expect(find.text('Atur Add-on Produk'), findsOneWidget);
+      expect(find.text('Kopi Susu'), findsNWidgets(2));
+      expect(find.text('Extra Shot'), findsOneWidget);
+
+      await tester.tap(find.byKey(ValueKey('addon-option-${extraShot.id}')));
+      await tester.pump();
+
+      await tester.tap(find.text('Simpan'));
+      await tester.pump();
+
+      await waitForSaving(tester);
+      await tester.pumpAndSettle();
+
+      final assignedAddons = await runDb(
+        tester,
+        () => addonRepository.getForProduct(productId: product.id!),
+      );
+
+      expect(assignedAddons.length, 1);
+      expect(assignedAddons.first.id, extraShot.id);
+    });
+
+    testWidgets('preserves assignments when assignment dialog is canceled', (
+      tester,
+    ) async {
+      await createCategories(tester);
+
+      final product = await runDb<Product>(
+        tester,
+        () => productRepository.create(
+          categoryId: foodCategoryId,
+          name: 'Kopi Susu',
+          sellingPrice: 15000,
+          stock: 20,
+        ),
+      );
+
+      final extraShot = await runDb(
+        tester,
+        () => addonRepository.create(
+          name: 'Extra Shot',
+          additionalPrice: 5000,
+          stock: 20,
+        ),
+      );
+
+      final caramel = await runDb(
+        tester,
+        () => addonRepository.create(
+          name: 'Caramel',
+          additionalPrice: 2000,
+          stock: 15,
+        ),
+      );
+
+      // Simpan relasi awal hanya dengan Extra Shot.
+      await runDb(
+        tester,
+        () => addonRepository.setForProduct(
+          productId: product.id!,
+          addonIds: [extraShot.id!],
+        ),
+      );
+
+      await pumpProductsView(tester);
+
+      final assignmentButton = find.byTooltip('Atur add-on');
+
+      await tester.ensureVisible(assignmentButton);
+      await tester.pumpAndSettle();
+
+      await tester.tap(assignmentButton);
+      await tester.pump();
+
+      await waitForAssignmentLoading(tester);
+
+      expect(find.text('Atur Add-on Produk'), findsOneWidget);
+
+      // Tambahkan Caramel hanya pada pilihan sementara di dialog.
+      await tester.tap(find.byKey(ValueKey('addon-option-${caramel.id}')));
+      await tester.pump();
+
+      // Batalkan perubahan.
+      await tester.tap(find.text('Batal'));
+      await tester.pumpAndSettle();
+
+      final assignedAddons = await runDb(
+        tester,
+        () => addonRepository.getForProduct(productId: product.id!),
+      );
+
+      expect(assignedAddons.length, 1);
+      expect(assignedAddons.first.id, extraShot.id);
+      expect(assignedAddons.any((addon) => addon.id == caramel.id), isFalse);
+    });
+
     testWidgets('deactivates a product', (tester) async {
       await createCategories(tester);
 
@@ -457,6 +627,9 @@ void main() {
       );
 
       await pumpProductsView(tester);
+
+      await tester.ensureVisible(find.byTooltip('Nonaktifkan produk'));
+      await tester.pumpAndSettle();
 
       await tester.tap(find.byTooltip('Nonaktifkan produk'));
       await tester.pumpAndSettle();
@@ -477,6 +650,19 @@ void main() {
 
       expect(updatedProduct, isNotNull);
       expect(updatedProduct!.isActive, isFalse);
+    });
+
+    testWidgets('opens add-on management from product management', (
+      tester,
+    ) async {
+      await pumpProductsView(tester);
+
+      await tester.tap(find.byTooltip('Kelola Add-on'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Kelola Add-on'), findsOneWidget);
+      expect(find.text('Belum ada add-on'), findsOneWidget);
+      expect(find.byType(FloatingActionButton), findsOneWidget);
     });
   });
 }

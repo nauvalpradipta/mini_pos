@@ -157,6 +157,30 @@ class AddonRepository {
     });
   }
 
+  /// Reactivates a previously deactivated add-on.
+  Future<void> activate(int id) async {
+    await _database.transaction((transaction) async {
+      final addons = await transaction.query(
+        'addons',
+        columns: ['id'],
+        where: 'id = ?',
+        whereArgs: [id],
+        limit: 1,
+      );
+
+      if (addons.isEmpty) {
+        throw StateError('Add-on tidak ditemukan.');
+      }
+
+      await transaction.update(
+        'addons',
+        {'is_active': 1, 'updated_at': DateTime.now().millisecondsSinceEpoch},
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+    });
+  }
+
   // Mengatur seluruh add-on yang tersedia untuk suatu produk.
   Future<void> setForProduct({
     required int productId,
