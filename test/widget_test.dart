@@ -1,27 +1,237 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
 import 'package:mini_pos/app/app.dart';
+import 'package:mini_pos/features/auth/models/auth_user.dart';
+import 'package:mini_pos/features/auth/repositories/auth_repository.dart';
+import 'package:mini_pos/features/auth/services/session_service.dart';
+import 'package:mini_pos/features/auth/viewmodels/auth_view_model.dart';
+import 'package:mini_pos/features/auth/views/login_view.dart';
+
+// Fake repository untuk pengujian integrasi UI.
+class FakeAuthRepository implements AuthRepository {
+  final Map<String, AuthUser> _users = {};
+  final Map<int, String> _passwords = {};
+
+  int _nextId = 1;
+
+  @override
+  Future<AuthUser> register({
+    required String fullName,
+    required String username,
+    required String password,
+  }) async {
+    final normalizedName = fullName.trim();
+    final normalizedUsername = username.trim();
+    final usernameKey = normalizedUsername.toLowerCase();
+
+    if (normalizedName.isEmpty || normalizedUsername.isEmpty) {
+      throw ArgumentError('Nama dan username wajib diisi.');
+    }
+
+    if (password.length < 8) {
+      throw ArgumentError('Password minimal 8 karakter.');
+    }
+
+    if (_users.containsKey(usernameKey)) {
+      throw StateError('Username sudah digunakan.');
+    }
+
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final id = _nextId++;
+
+    final user = AuthUser(
+      id: id,
+      fullName: normalizedName,
+      username: normalizedUsername,
+      isActive: true,
+      createdAt: now,
+      updatedAt: now,
+    );
+
+    _users[usernameKey] = user;
+    _passwords[id] = password;
+
+    return user;
+  }
+
+  @override
+  Future<AuthUser?> login({
+    required String username,
+    required String password,
+  }) async {
+    final user = _users[username.trim().toLowerCase()];
+
+    if (user == null || !user.isActive) {
+      return null;
+    }
+
+    if (_passwords[user.id] != password) {
+      return null;
+    }
+
+    return user;
+  }
+
+  @override
+  Future<AuthUser?> getActiveUserById(int id) async {
+    for (final user in _users.values) {
+      if (user.id == id && user.isActive) {
+        return user;
+      }
+    }
+
+    return null;
+  }
+}
 
 void main() {
-  testWidgets('shows cashier screen by default', (tester) async {
-    await tester.pumpWidget(const KasirkuApp());
+  late FakeAuthRepository fakeRepository;
+  late SessionService sessionService;
+  late AuthViewModel authViewModel;
 
-    expect(find.text('Cashier'), findsOneWidget);
-    expect(
-      find.text('Product catalog, cart, and checkout will be built here.'),
-      findsOneWidget,
-    );
+  setUp(() async {
+    SharedPreferences.setMockInitialValues({});
+
+    final preferences = await SharedPreferences.getInstance();
+
+    fakeRepository = FakeAuthRepository();
+    sessionService = SessionService(preferences);
+
+    authViewModel = AuthViewModel(fakeRepository, sessionService);
   });
 
-  testWidgets('can navigate to product management', (tester) async {
-    await tester.pumpWidget(const KasirkuApp());
+  tearDown(() {
+    authViewModel.dispose();
+  });
 
-    await tester.tap(find.text('Produk'));
-    await tester.pumpAndSettle();
-
-    expect(find.text('Product Management'), findsOneWidget);
-    expect(
-      find.text('Manage products, categories, and add-ons here.'),
-      findsOneWidget,
+  Future<void> pumpApplication(WidgetTester tester) async {
+    await tester.pumpWidget(
+      ChangeNotifierProvider<AuthViewModel>.value(
+        value: authViewModel,
+        child: const KasirkuApp(),
+      ),
     );
+
+    // AuthGate menjalankan restoreSession setelah frame pertama.
+    await tester.pump();
+    await tester.pump();
+    await tester.pump();
+  }
+
+  Future<AuthUser> createTestUser() async {
+    return fakeRepository.register(
+      fullName: 'Test Cashier',
+      username: 'cashier',
+      password: 'password123',
+    );
+  }
+
+  group('Application Authentication Flow', () {
+    testWidgets('shows login screen when no session exists', (tester) async {
+      await pumpApplication(tester);
+
+      expect(find.byType(LoginView), findsOneWidget);
+      expect(find.text('KASIRKU POS'), findsOneWidget);
+    });
+
+    testWidgets('restores saved session and opens cashier screen', (
+      tester,
+    ) async {
+      final user = await createTestUser();
+
+      await sessionService.saveUserId(user.id);
+
+      await pumpApplication(tester);
+
+      expect(authViewModel.isAuthenticated, isTrue);
+      expect(find.byType(LoginView), findsNothing);
+
+      expect(find.text('Cashier'), findsOneWidget);
+
+      expect(
+        find.text('Product catalog, cart, and checkout will be built here.'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('can navigate to product management', (tester) async {
+      final user = await createTestUser();
+
+      await sessionService.saveUserId(user.id);
+
+      await pumpApplication(tester);
+
+      await tester.tap(find.text('Produk'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Product Management'), findsOneWidget);
+
+      expect(
+        find.text('Manage products, categories, and add-ons here.'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('logs in and opens cashier screen', (tester) async {
+      await createTestUser();
+
+      await pumpApplication(tester);
+
+      expect(find.byType(LoginView), findsOneWidget);
+
+      await tester.enterText(find.byType(TextFormField).at(0), 'cashier');
+
+      await tester.enterText(find.byType(TextFormField).at(1), 'password123');
+
+      await tester.tap(find.text('Masuk'));
+      await tester.pumpAndSettle();
+
+      expect(authViewModel.isAuthenticated, isTrue);
+      expect(find.byType(LoginView), findsNothing);
+      expect(find.text('Cashier'), findsOneWidget);
+      expect(sessionService.hasSession, isTrue);
+    });
+
+    testWidgets('displays cashier profile and logs out', (tester) async {
+      final user = await createTestUser();
+
+      await sessionService.saveUserId(user.id);
+
+      await pumpApplication(tester);
+
+      await tester.tap(find.text('Pengaturan'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Akun Kasir'), findsOneWidget);
+      expect(find.text('Test Cashier'), findsNWidgets(2));
+      expect(find.text('@cashier'), findsOneWidget);
+
+      final logoutButton = find.text('Keluar dari akun');
+
+      await tester.ensureVisible(logoutButton);
+      await tester.pumpAndSettle();
+
+      await tester.tap(logoutButton);
+      await tester.pumpAndSettle();
+
+      expect(authViewModel.isAuthenticated, isFalse);
+      expect(sessionService.hasSession, isFalse);
+      expect(find.byType(LoginView), findsOneWidget);
+    });
+
+    testWidgets('clears session when stored user does not exist', (
+      tester,
+    ) async {
+      await sessionService.saveUserId(999);
+
+      await pumpApplication(tester);
+
+      expect(authViewModel.isAuthenticated, isFalse);
+      expect(sessionService.hasSession, isFalse);
+      expect(find.byType(LoginView), findsOneWidget);
+    });
   });
 }

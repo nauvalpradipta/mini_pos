@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
-import 'navigation/app_routes.dart';
-import 'navigation/app_shell.dart';
+import 'auth/auth_gate.dart';
 import 'theme/app_theme.dart';
 
 class KasirkuApp extends StatelessWidget {
@@ -12,12 +11,8 @@ class KasirkuApp extends StatelessWidget {
     return MaterialApp(
       title: 'KASIRKU POS',
       debugShowCheckedModeBanner: false,
-
       theme: AppTheme.lightTheme,
-
-      initialRoute: AppRoutes.home,
-
-      routes: {AppRoutes.home: (context) => const AppShell()},
+      home: const AuthGate(),
     );
   }
 }
