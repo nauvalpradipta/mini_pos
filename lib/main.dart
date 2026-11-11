@@ -8,6 +8,9 @@ import 'features/auth/repositories/auth_repository.dart';
 import 'features/auth/services/password_hasher.dart';
 import 'features/auth/services/session_service.dart';
 import 'features/auth/viewmodels/auth_view_model.dart';
+import 'features/products/repositories/category_repository.dart';
+import 'features/products/repositories/product_repository.dart';
+import 'features/products/viewmodels/product_management_view_model.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -25,13 +28,23 @@ Future<void> main() async {
 
   final sessionService = SessionService(preferences);
 
-  // 4. Create AuthViewModel.
+  // 4. Initialize product management repositories.
+  final categoryRepository = CategoryRepository(database);
+  final productRepository = ProductRepository(database);
+
+  // 5. Create ViewModels.
   final authViewModel = AuthViewModel(authRepository, sessionService);
 
-  // 5. Run application with Provider.
+  // 6. Run application with multiple Providers.
   runApp(
-    ChangeNotifierProvider<AuthViewModel>.value(
-      value: authViewModel,
+    MultiProvider(
+      providers: [
+        ChangeNotifierProvider<AuthViewModel>.value(value: authViewModel),
+        ChangeNotifierProvider<ProductManagementViewModel>(
+          create: (_) =>
+              ProductManagementViewModel(categoryRepository, productRepository),
+        ),
+      ],
       child: const KasirkuApp(),
     ),
   );

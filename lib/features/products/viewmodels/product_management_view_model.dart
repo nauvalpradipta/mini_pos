@@ -66,7 +66,6 @@ class ProductManagementViewModel extends ChangeNotifier {
   Future<void> _fetchData() async {
     _categories = await _categoryRepository.getAll(activeOnly: true);
 
-    // Reset filter jika kategori sudah tidak aktif.
     if (_selectedCategoryId != null &&
         !_categories.any((category) => category.id == _selectedCategoryId)) {
       _selectedCategoryId = null;
