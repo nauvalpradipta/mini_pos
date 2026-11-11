@@ -13,6 +13,7 @@ class ProductManagementViewModel extends ChangeNotifier {
   final ProductRepository _productRepository;
 
   List<Category> _categories = [];
+  List<Category> _inactiveCategories = [];
   List<Product> _products = [];
 
   int? _selectedCategoryId;
@@ -20,6 +21,8 @@ class ProductManagementViewModel extends ChangeNotifier {
 
   bool _isLoading = false;
   bool _isSaving = false;
+  bool _isCheckingDuplicate = false;
+  bool _hasLoaded = false;
 
   String? _errorMessage;
   String? _successMessage;
@@ -30,6 +33,9 @@ class ProductManagementViewModel extends ChangeNotifier {
 
   List<Category> get categories => List.unmodifiable(_categories);
 
+  List<Category> get inactiveCategories =>
+      List.unmodifiable(_inactiveCategories);
+
   List<Product> get products => List.unmodifiable(_products);
 
   int? get selectedCategoryId => _selectedCategoryId;
@@ -39,6 +45,10 @@ class ProductManagementViewModel extends ChangeNotifier {
   bool get isLoading => _isLoading;
 
   bool get isSaving => _isSaving;
+
+  bool get isCheckingDuplicate => _isCheckingDuplicate;
+
+  bool get hasLoaded => _hasLoaded;
 
   String? get errorMessage => _errorMessage;
 
@@ -55,6 +65,7 @@ class ProductManagementViewModel extends ChangeNotifier {
 
     try {
       await _fetchData();
+      _hasLoaded = true;
     } catch (error) {
       _errorMessage = _readableError(error);
     } finally {
@@ -63,8 +74,20 @@ class ProductManagementViewModel extends ChangeNotifier {
     }
   }
 
+  Future<void> ensureLoaded() async {
+    if (_hasLoaded || _isLoading) return;
+
+    await load();
+  }
+
   Future<void> _fetchData() async {
-    _categories = await _categoryRepository.getAll(activeOnly: true);
+    final allCategories = await _categoryRepository.getAll(activeOnly: false);
+
+    _categories = allCategories.where((category) => category.isActive).toList();
+
+    _inactiveCategories = allCategories
+        .where((category) => !category.isActive)
+        .toList();
 
     if (_selectedCategoryId != null &&
         !_categories.any((category) => category.id == _selectedCategoryId)) {
@@ -154,6 +177,15 @@ class ProductManagementViewModel extends ChangeNotifier {
     );
   }
 
+  Future<bool> activateCategory(int id) {
+    return _performMutation(
+      action: () async {
+        await _categoryRepository.activate(id);
+      },
+      successMessage: 'Kategori berhasil diaktifkan kembali.',
+    );
+  }
+
   // ---------------------------------------------------
   // PRODUCT CRUD
   // ---------------------------------------------------
@@ -202,6 +234,26 @@ class ProductManagementViewModel extends ChangeNotifier {
     );
   }
 
+  Future<Product?> findActiveDuplicateProduct({
+    required int categoryId,
+    required String name,
+    int? excludeId,
+  }) async {
+    _isCheckingDuplicate = true;
+    notifyListeners();
+
+    try {
+      return await _productRepository.findActiveDuplicate(
+        categoryId: categoryId,
+        name: name,
+        excludeId: excludeId,
+      );
+    } finally {
+      _isCheckingDuplicate = false;
+      notifyListeners();
+    }
+  }
+
   Future<bool> deactivateProduct(int id) {
     return _performMutation(
       action: () async {
@@ -229,6 +281,7 @@ class ProductManagementViewModel extends ChangeNotifier {
 
       // Refresh data agar UI menampilkan kondisi database terbaru.
       await _fetchData();
+      _hasLoaded = true;
 
       _successMessage = successMessage;
       return true;

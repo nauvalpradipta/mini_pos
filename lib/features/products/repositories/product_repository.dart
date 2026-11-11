@@ -133,6 +133,49 @@ class ProductRepository {
     return Product.fromMap(results.first);
   }
 
+  /// Finds an active product with the same name and category.
+  ///
+  /// Name comparison is case-insensitive.
+  /// [excludeId] prevents the current product from matching itself during edit.
+  Future<Product?> findActiveDuplicate({
+    required int categoryId,
+    required String name,
+    int? excludeId,
+  }) async {
+    final normalizedName = name.trim();
+
+    if (normalizedName.isEmpty) {
+      return null;
+    }
+
+    final conditions = [
+      'category_id = ?',
+      'name = ? COLLATE NOCASE',
+      'is_active = 1',
+    ];
+
+    final arguments = <Object?>[categoryId, normalizedName];
+
+    if (excludeId != null) {
+      conditions.add('id != ?');
+      arguments.add(excludeId);
+    }
+
+    final results = await _database.query(
+      'products',
+      where: conditions.join(' AND '),
+      whereArgs: arguments,
+      orderBy: 'name COLLATE NOCASE ASC',
+      limit: 1,
+    );
+
+    if (results.isEmpty) {
+      return null;
+    }
+
+    return Product.fromMap(results.first);
+  }
+
   Future<Product> update({
     required int id,
     required int categoryId,

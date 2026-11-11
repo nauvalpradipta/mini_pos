@@ -15,6 +15,8 @@ class CategoryManagementView extends StatefulWidget {
 }
 
 class _CategoryManagementViewState extends State<CategoryManagementView> {
+  bool _showInactive = false;
+
   @override
   void initState() {
     super.initState();
@@ -71,7 +73,7 @@ class _CategoryManagementViewState extends State<CategoryManagementView> {
               onPressed: () => Navigator.of(dialogContext).pop(false),
               child: const Text('Batal'),
             ),
-            TextButton(
+            FilledButton(
               onPressed: () => Navigator.of(dialogContext).pop(true),
               child: const Text('Nonaktifkan'),
             ),
@@ -89,6 +91,24 @@ class _CategoryManagementViewState extends State<CategoryManagementView> {
     final success = await viewModel.deactivateCategory(category.id!);
 
     if (!mounted) return;
+
+    _showFeedback(success);
+  }
+
+  Future<void> _activateCategory(Category category) async {
+    final viewModel = context.read<ProductManagementViewModel>();
+
+    viewModel.clearMessages();
+
+    final success = await viewModel.activateCategory(category.id!);
+
+    if (!mounted) return;
+
+    if (success) {
+      setState(() {
+        _showInactive = false;
+      });
+    }
 
     _showFeedback(success);
   }
@@ -119,20 +139,50 @@ class _CategoryManagementViewState extends State<CategoryManagementView> {
         actions: [
           IconButton(
             tooltip: 'Muat ulang',
-            onPressed: viewModel.isLoading ? null : viewModel.refresh,
+            onPressed: viewModel.isLoading || viewModel.isSaving
+                ? null
+                : viewModel.refresh,
             icon: const Icon(Icons.refresh),
           ),
           const SizedBox(width: 8),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: viewModel.isSaving ? null : () => _showCategoryForm(),
-        icon: const Icon(Icons.add),
-        label: const Text('Tambah Kategori'),
-      ),
+      floatingActionButton: _showInactive
+          ? null
+          : FloatingActionButton.extended(
+              onPressed: viewModel.isSaving ? null : () => _showCategoryForm(),
+              icon: const Icon(Icons.add),
+              label: const Text('Tambah Kategori'),
+            ),
       body: Column(
         children: [
           if (viewModel.isLoading) const LinearProgressIndicator(minHeight: 2),
+
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+            child: SegmentedButton<bool>(
+              segments: const [
+                ButtonSegment<bool>(
+                  value: false,
+                  label: Text('Aktif'),
+                  icon: Icon(Icons.check_circle_outline),
+                ),
+                ButtonSegment<bool>(
+                  value: true,
+                  label: Text('Nonaktif'),
+                  icon: Icon(Icons.archive_outlined),
+                ),
+              ],
+              selected: {_showInactive},
+              onSelectionChanged: viewModel.isSaving
+                  ? null
+                  : (selection) {
+                      setState(() {
+                        _showInactive = selection.first;
+                      });
+                    },
+            ),
+          ),
 
           Expanded(child: _buildBody(viewModel, theme, colorScheme)),
         ],
@@ -145,11 +195,17 @@ class _CategoryManagementViewState extends State<CategoryManagementView> {
     ThemeData theme,
     ColorScheme colorScheme,
   ) {
-    if (viewModel.isLoading && viewModel.categories.isEmpty) {
+    final categories = _showInactive
+        ? viewModel.inactiveCategories
+        : viewModel.categories;
+
+    if (viewModel.isLoading &&
+        viewModel.categories.isEmpty &&
+        viewModel.inactiveCategories.isEmpty) {
       return const Center(child: CircularProgressIndicator());
     }
 
-    if (viewModel.errorMessage != null && viewModel.categories.isEmpty) {
+    if (viewModel.errorMessage != null && categories.isEmpty) {
       return Center(
         child: Padding(
           padding: const EdgeInsets.all(24),
@@ -171,7 +227,7 @@ class _CategoryManagementViewState extends State<CategoryManagementView> {
       );
     }
 
-    if (viewModel.categories.isEmpty) {
+    if (categories.isEmpty) {
       return Center(
         child: Padding(
           padding: const EdgeInsets.all(24),
@@ -179,20 +235,41 @@ class _CategoryManagementViewState extends State<CategoryManagementView> {
             mainAxisSize: MainAxisSize.min,
             children: [
               Icon(
-                Icons.category_outlined,
+                _showInactive
+                    ? Icons.inventory_2_outlined
+                    : Icons.category_outlined,
                 size: 56,
                 color: colorScheme.onSurfaceVariant,
               ),
               const SizedBox(height: 16),
-              Text('Belum ada kategori', style: theme.textTheme.titleMedium),
+              Text(
+                _showInactive
+                    ? 'Tidak ada kategori nonaktif'
+                    : 'Belum ada kategori',
+                style: theme.textTheme.titleMedium,
+                textAlign: TextAlign.center,
+              ),
               const SizedBox(height: 8),
               Text(
-                'Tambahkan kategori untuk mengelompokkan produk tokomu.',
+                _showInactive
+                    ? 'Kategori yang dinonaktifkan akan muncul di sini.'
+                    : 'Tambahkan kategori untuk mengelompokkan produk tokomu.',
                 textAlign: TextAlign.center,
                 style: theme.textTheme.bodyMedium?.copyWith(
                   color: colorScheme.onSurfaceVariant,
                 ),
               ),
+              if (_showInactive) ...[
+                const SizedBox(height: 16),
+                OutlinedButton(
+                  onPressed: () {
+                    setState(() {
+                      _showInactive = false;
+                    });
+                  },
+                  child: const Text('Lihat kategori aktif'),
+                ),
+              ],
             ],
           ),
         ),
@@ -202,11 +279,12 @@ class _CategoryManagementViewState extends State<CategoryManagementView> {
     return RefreshIndicator(
       onRefresh: viewModel.refresh,
       child: ListView.separated(
+        physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
-        itemCount: viewModel.categories.length,
+        itemCount: categories.length,
         separatorBuilder: (_, _) => const SizedBox(height: 10),
         itemBuilder: (context, index) {
-          final category = viewModel.categories[index];
+          final category = categories[index];
 
           return Card(
             elevation: 0,
@@ -235,26 +313,33 @@ class _CategoryManagementViewState extends State<CategoryManagementView> {
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
               ),
-              trailing: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  IconButton(
-                    tooltip: 'Edit kategori',
-                    onPressed: viewModel.isSaving
-                        ? null
-                        : () => _showCategoryForm(category: category),
-                    icon: const Icon(Icons.edit_outlined),
-                  ),
-                  IconButton(
-                    tooltip: 'Nonaktifkan kategori',
-                    onPressed: viewModel.isSaving
-                        ? null
-                        : () => _confirmDeactivate(category),
-                    color: colorScheme.error,
-                    icon: const Icon(Icons.archive_outlined),
-                  ),
-                ],
-              ),
+              trailing: _showInactive
+                  ? FilledButton.tonal(
+                      onPressed: viewModel.isSaving
+                          ? null
+                          : () => _activateCategory(category),
+                      child: const Text('Aktifkan'),
+                    )
+                  : Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        IconButton(
+                          tooltip: 'Edit kategori',
+                          onPressed: viewModel.isSaving
+                              ? null
+                              : () => _showCategoryForm(category: category),
+                          icon: const Icon(Icons.edit_outlined),
+                        ),
+                        IconButton(
+                          tooltip: 'Nonaktifkan kategori',
+                          onPressed: viewModel.isSaving
+                              ? null
+                              : () => _confirmDeactivate(category),
+                          color: colorScheme.error,
+                          icon: const Icon(Icons.archive_outlined),
+                        ),
+                      ],
+                    ),
             ),
           );
         },

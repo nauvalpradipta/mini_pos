@@ -197,7 +197,7 @@ void main() {
 
       expect(find.text('Nonaktifkan kategori?'), findsOneWidget);
 
-      await tester.tap(find.widgetWithText(TextButton, 'Nonaktifkan'));
+      await tester.tap(find.widgetWithText(FilledButton, 'Nonaktifkan'));
       await tester.pump();
 
       await waitForSaving(tester);
@@ -234,7 +234,7 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 300));
 
-      await tester.tap(find.widgetWithText(TextButton, 'Nonaktifkan'));
+      await tester.tap(find.widgetWithText(FilledButton, 'Nonaktifkan'));
       await tester.pump();
 
       await waitForSaving(tester);
@@ -242,6 +242,64 @@ void main() {
       expect(find.text('Minuman'), findsOneWidget);
       expect(viewModel.categories.length, 1);
       expect(viewModel.errorMessage, isNotNull);
+    });
+
+    testWidgets('reactivates an inactive category from the inactive tab', (
+      tester,
+    ) async {
+      final categoryId = await runDb(
+        tester,
+        () => categoryRepository.create(
+          name: 'Minuman',
+          description: 'Kategori minuman',
+        ),
+      );
+
+      await runDb(tester, () => categoryRepository.deactivate(categoryId));
+
+      await pumpCategoryView(tester);
+
+      // Category should not appear in the active tab.
+      expect(viewModel.categories, isEmpty);
+      expect(viewModel.inactiveCategories.length, 1);
+
+      expect(find.text('Minuman'), findsNothing);
+
+      // Open the inactive category tab.
+      await tester.tap(find.text('Nonaktif'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Minuman'), findsOneWidget);
+      expect(find.text('Kategori minuman'), findsOneWidget);
+      expect(find.text('Aktifkan'), findsOneWidget);
+
+      // Reactivate the category.
+      await tester.tap(find.text('Aktifkan'));
+      await tester.pump();
+
+      await waitForSaving(tester);
+      await tester.pumpAndSettle();
+
+      // The UI should automatically return to the active tab.
+      expect(find.text('Minuman'), findsOneWidget);
+      expect(find.text('Kategori minuman'), findsOneWidget);
+
+      expect(viewModel.categories.length, 1);
+      expect(viewModel.categories.first.id, categoryId);
+      expect(viewModel.categories.first.isActive, isTrue);
+
+      expect(viewModel.inactiveCategories, isEmpty);
+
+      // Verify the original database record is still used.
+      final category = await runDb<Category?>(
+        tester,
+        () => categoryRepository.getById(categoryId),
+      );
+
+      expect(category, isNotNull);
+      expect(category!.id, categoryId);
+      expect(category.name, 'Minuman');
+      expect(category.isActive, isTrue);
     });
   });
 }

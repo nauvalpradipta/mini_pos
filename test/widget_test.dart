@@ -2,7 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
+import 'package:mini_pos/core/database/database_schema.dart';
+import 'package:mini_pos/features/products/repositories/category_repository.dart';
+import 'package:mini_pos/features/products/repositories/product_repository.dart';
+import 'package:mini_pos/features/products/viewmodels/product_management_view_model.dart';
 import 'package:mini_pos/app/app.dart';
 import 'package:mini_pos/features/auth/models/auth_user.dart';
 import 'package:mini_pos/features/auth/repositories/auth_repository.dart';
@@ -92,6 +97,13 @@ void main() {
   late SessionService sessionService;
   late AuthViewModel authViewModel;
 
+  late Database database;
+  late ProductManagementViewModel productManagementViewModel;
+
+  setUpAll(() {
+    sqfliteFfiInit();
+  });
+
   setUp(() async {
     SharedPreferences.setMockInitialValues({});
 
@@ -101,21 +113,55 @@ void main() {
     sessionService = SessionService(preferences);
 
     authViewModel = AuthViewModel(fakeRepository, sessionService);
+
+    database = await databaseFactoryFfi.openDatabase(
+      inMemoryDatabasePath,
+      options: OpenDatabaseOptions(
+        version: 1,
+        onConfigure: (db) async {
+          await db.execute('PRAGMA foreign_keys = ON');
+        },
+        onCreate: (db, version) async {
+          await DatabaseSchema.create(db);
+        },
+      ),
+    );
+
+    final categoryRepository = CategoryRepository(database);
+    final productRepository = ProductRepository(database);
+
+    productManagementViewModel = ProductManagementViewModel(
+      categoryRepository,
+      productRepository,
+    );
   });
 
-  tearDown(() {
+  tearDown(() async {
     authViewModel.dispose();
+    productManagementViewModel.dispose();
+    await database.close();
   });
 
   Future<void> pumpApplication(WidgetTester tester) async {
+    // Load product data before rendering the application.
+    // SQLite FFI requires a real async zone in widget tests.
+    await tester.runAsync(() async {
+      await productManagementViewModel.load();
+    });
+
     await tester.pumpWidget(
-      ChangeNotifierProvider<AuthViewModel>.value(
-        value: authViewModel,
+      MultiProvider(
+        providers: [
+          ChangeNotifierProvider<AuthViewModel>.value(value: authViewModel),
+          ChangeNotifierProvider<ProductManagementViewModel>.value(
+            value: productManagementViewModel,
+          ),
+        ],
         child: const KasirkuApp(),
       ),
     );
 
-    // AuthGate menjalankan restoreSession setelah frame pertama.
+    // AuthGate restores session after the first frame.
     await tester.pump();
     await tester.pump();
     await tester.pump();
@@ -169,10 +215,9 @@ void main() {
 
       expect(find.text('Product Management'), findsOneWidget);
 
-      expect(
-        find.text('Manage products, categories, and add-ons here.'),
-        findsOneWidget,
-      );
+      expect(find.text('Kelola produk dan kategori tokomu.'), findsOneWidget);
+
+      expect(find.text('Daftar Produk'), findsOneWidget);
     });
 
     testWidgets('logs in and opens cashier screen', (tester) async {

@@ -137,4 +137,28 @@ class CategoryRepository {
       );
     });
   }
+
+  /// Reactivates a previously deactivated category.
+  Future<void> activate(int id) async {
+    await _database.transaction((txn) async {
+      final categoryResult = await txn.query(
+        DatabaseTables.categories,
+        columns: ['id'],
+        where: 'id = ?',
+        whereArgs: [id],
+        limit: 1,
+      );
+
+      if (categoryResult.isEmpty) {
+        throw StateError('Category not found.');
+      }
+
+      await txn.update(
+        DatabaseTables.categories,
+        {'is_active': 1, 'updated_at': DateTime.now().millisecondsSinceEpoch},
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+    });
+  }
 }
