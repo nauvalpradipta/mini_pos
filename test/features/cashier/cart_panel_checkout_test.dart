@@ -197,6 +197,19 @@ void main() {
       (tester) async {
         setViewport(tester);
 
+        await tester.runAsync(() async {
+          await database.update(
+            'app_settings',
+            {
+              'store_name': 'Kopi Kita',
+              'address': 'Jl. Malioboro No. 10',
+              'phone': '081234567890',
+            },
+            where: 'id = ?',
+            whereArgs: [1],
+          );
+        });
+
         // Tambahkan satu produk ke keranjang.
         final products = await tester.runAsync(
           () => productRepository.getAll(),
@@ -224,6 +237,9 @@ void main() {
 
         // Pastikan struk berhasil ditampilkan.
         expect(find.text('Transaksi berhasil'), findsOneWidget);
+        expect(find.text('Kopi Kita'), findsOneWidget);
+        expect(find.text('Jl. Malioboro No. 10'), findsOneWidget);
+        expect(find.text('081234567890'), findsOneWidget);
         expect(find.text('Test Cashier'), findsOneWidget);
         expect(find.text('Rp15.000'), findsWidgets);
         expect(find.text('Rp20.000'), findsOneWidget);

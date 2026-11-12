@@ -8,6 +8,8 @@ import '../models/category.dart';
 import '../models/product.dart';
 import '../services/product_image_service.dart';
 
+import 'package:image_picker/image_picker.dart';
+
 class ProductFormResult {
   const ProductFormResult({
     required this.categoryId,
@@ -97,12 +99,55 @@ class _ProductFormDialogState extends State<ProductFormDialog> {
     if (_isPickingImage) return;
 
     setState(() {
-      _isPickingImage = true;
       _imageError = null;
     });
 
+    final source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      builder: (sheetContext) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Text(
+                  'Pilih sumber foto',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+              ),
+              ListTile(
+                key: const ValueKey('product-image-source-camera'),
+                leading: const Icon(Icons.camera_alt_outlined),
+                title: const Text('Ambil foto dengan kamera'),
+                onTap: () {
+                  Navigator.of(sheetContext).pop(ImageSource.camera);
+                },
+              ),
+              ListTile(
+                key: const ValueKey('product-image-source-gallery'),
+                leading: const Icon(Icons.photo_library_outlined),
+                title: const Text('Pilih dari galeri'),
+                onTap: () {
+                  Navigator.of(sheetContext).pop(ImageSource.gallery);
+                },
+              ),
+            ],
+          ),
+        );
+      },
+    );
+
+    if (!mounted || source == null) return;
+
+    setState(() {
+      _isPickingImage = true;
+    });
+
     try {
-      final newImagePath = await widget.imageService.pickAndSaveImage();
+      final newImagePath = await widget.imageService.pickAndSaveImage(
+        source: source,
+      );
 
       if (newImagePath == null) return;
 

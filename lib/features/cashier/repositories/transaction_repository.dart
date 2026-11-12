@@ -367,6 +367,9 @@ class TransactionRepository {
         total: total,
         cashReceived: request.cashReceived,
         changeAmount: changeAmount,
+        storeName: storeName,
+        storeAddress: storeAddress,
+        storePhone: storePhone,
       );
     });
   }

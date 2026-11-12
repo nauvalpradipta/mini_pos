@@ -55,6 +55,34 @@ class CheckoutReceiptDialog extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              if (result.storeName.trim().isNotEmpty) ...[
+                Text(
+                  result.storeName,
+                  textAlign: TextAlign.center,
+                  style: theme.textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                if (result.storeAddress.trim().isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    result.storeAddress,
+                    textAlign: TextAlign.center,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+                if (result.storePhone.trim().isNotEmpty)
+                  Text(
+                    result.storePhone,
+                    textAlign: TextAlign.center,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                const SizedBox(height: 16),
+              ],
               Icon(
                 Icons.check_circle_outline,
                 size: 56,

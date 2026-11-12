@@ -18,9 +18,15 @@ class ProductImageService {
   /// Opens the device gallery and saves the selected image locally.
   ///
   /// Returns null when the user cancels the picker.
-  Future<String?> pickAndSaveImage() async {
+
+  /// Opens the camera or device gallery and saves the selected image locally.
+  ///
+  /// Returns null when the user cancels the picker.
+  Future<String?> pickAndSaveImage({
+    ImageSource source = ImageSource.gallery,
+  }) async {
     final pickedImage = await _imagePicker.pickImage(
-      source: ImageSource.gallery,
+      source: source,
       maxWidth: 1600,
       imageQuality: 85,
     );

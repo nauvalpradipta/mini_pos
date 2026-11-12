@@ -30,6 +30,9 @@ class CheckoutResult {
     required this.total,
     required this.cashReceived,
     required this.changeAmount,
+    this.storeName = '',
+    this.storeAddress = '',
+    this.storePhone = '',
   });
 
   final int saleId;
@@ -44,6 +47,11 @@ class CheckoutResult {
   final int total;
   final int cashReceived;
   final int changeAmount;
+
+  // Store information captured at checkout time.
+  final String storeName;
+  final String storeAddress;
+  final String storePhone;
 }
 
 class CheckoutException implements Exception {
