@@ -13,6 +13,14 @@ import 'features/products/repositories/product_repository.dart';
 import 'features/products/viewmodels/product_management_view_model.dart';
 import 'features/products/repositories/addon_repository.dart';
 import 'features/products/viewmodels/addon_management_view_model.dart';
+import 'features/cashier/viewmodels/cart_view_model.dart';
+import 'features/cashier/viewmodels/cashier_catalog_view_model.dart';
+import 'features/cashier/repositories/transaction_repository.dart';
+import 'features/cashier/viewmodels/checkout_view_model.dart';
+import 'features/sales/repositories/sales_repository.dart';
+import 'features/sales/viewmodels/sales_view_model.dart';
+import 'features/settings/repositories/settings_repository.dart';
+import 'features/settings/viewmodels/settings_view_model.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -35,6 +43,23 @@ Future<void> main() async {
   final productRepository = ProductRepository(database);
   final addonRepository = AddonRepository(database);
 
+  final cashierCatalogViewModel = CashierCatalogViewModel(
+    categoryRepository,
+    productRepository,
+  );
+
+  final cartViewModel = CartViewModel();
+
+  final transactionRepository = TransactionRepository(database);
+
+  final checkoutViewModel = CheckoutViewModel(transactionRepository);
+
+  final salesRepository = SalesRepository(database);
+  final salesViewModel = SalesViewModel(salesRepository);
+
+  final settingsRepository = SettingsRepository(database);
+  final settingsViewModel = SettingsViewModel(settingsRepository);
+
   // 5. Create ViewModels.
   final authViewModel = AuthViewModel(authRepository, sessionService);
 
@@ -49,6 +74,17 @@ Future<void> main() async {
         ),
         ChangeNotifierProvider<AddonManagementViewModel>(
           create: (_) => AddonManagementViewModel(addonRepository),
+        ),
+        ChangeNotifierProvider<CashierCatalogViewModel>.value(
+          value: cashierCatalogViewModel,
+        ),
+        ChangeNotifierProvider<CartViewModel>.value(value: cartViewModel),
+        ChangeNotifierProvider<CheckoutViewModel>.value(
+          value: checkoutViewModel,
+        ),
+        ChangeNotifierProvider<SalesViewModel>.value(value: salesViewModel),
+        ChangeNotifierProvider<SettingsViewModel>.value(
+          value: settingsViewModel,
         ),
       ],
       child: const KasirkuApp(),

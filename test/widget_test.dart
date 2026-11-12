@@ -16,6 +16,14 @@ import 'package:mini_pos/features/auth/viewmodels/auth_view_model.dart';
 import 'package:mini_pos/features/auth/views/login_view.dart';
 import 'package:mini_pos/features/products/repositories/addon_repository.dart';
 import 'package:mini_pos/features/products/viewmodels/addon_management_view_model.dart';
+import 'package:mini_pos/features/cashier/viewmodels/cart_view_model.dart';
+import 'package:mini_pos/features/cashier/viewmodels/cashier_catalog_view_model.dart';
+import 'package:mini_pos/features/cashier/repositories/transaction_repository.dart';
+import 'package:mini_pos/features/cashier/viewmodels/checkout_view_model.dart';
+import 'package:mini_pos/features/sales/repositories/sales_repository.dart';
+import 'package:mini_pos/features/sales/viewmodels/sales_view_model.dart';
+import 'package:mini_pos/features/settings/repositories/settings_repository.dart';
+import 'package:mini_pos/features/settings/viewmodels/settings_view_model.dart';
 
 // Fake repository untuk pengujian integrasi UI.
 class FakeAuthRepository implements AuthRepository {
@@ -102,6 +110,11 @@ void main() {
   late Database database;
   late ProductManagementViewModel productManagementViewModel;
   late AddonManagementViewModel addonManagementViewModel;
+  late CashierCatalogViewModel cashierCatalogViewModel;
+  late CartViewModel cartViewModel;
+  late CheckoutViewModel checkoutViewModel;
+  late SalesViewModel salesViewModel;
+  late SettingsViewModel settingsViewModel;
 
   setUpAll(() {
     sqfliteFfiInit();
@@ -130,6 +143,9 @@ void main() {
       ),
     );
 
+    final settingsRepository = SettingsRepository(database);
+    settingsViewModel = SettingsViewModel(settingsRepository);
+
     final categoryRepository = CategoryRepository(database);
     final productRepository = ProductRepository(database);
 
@@ -137,6 +153,20 @@ void main() {
       categoryRepository,
       productRepository,
     );
+
+    cashierCatalogViewModel = CashierCatalogViewModel(
+      categoryRepository,
+      productRepository,
+    );
+
+    cartViewModel = CartViewModel();
+
+    final transactionRepository = TransactionRepository(database);
+
+    checkoutViewModel = CheckoutViewModel(transactionRepository);
+
+    final salesRepository = SalesRepository(database);
+    salesViewModel = SalesViewModel(salesRepository);
 
     final addonRepository = AddonRepository(database);
 
@@ -147,6 +177,11 @@ void main() {
     authViewModel.dispose();
     productManagementViewModel.dispose();
     addonManagementViewModel.dispose();
+    cashierCatalogViewModel.dispose();
+    cartViewModel.dispose();
+    checkoutViewModel.dispose();
+    salesViewModel.dispose();
+    settingsViewModel.dispose();
     await database.close();
   });
 
@@ -156,6 +191,9 @@ void main() {
     await tester.runAsync(() async {
       await productManagementViewModel.load();
       await addonManagementViewModel.load();
+      await cashierCatalogViewModel.load();
+      await salesViewModel.load();
+      await settingsViewModel.load();
     });
 
     await tester.pumpWidget(
@@ -167,6 +205,17 @@ void main() {
           ),
           ChangeNotifierProvider<AddonManagementViewModel>.value(
             value: addonManagementViewModel,
+          ),
+          ChangeNotifierProvider<CashierCatalogViewModel>.value(
+            value: cashierCatalogViewModel,
+          ),
+          ChangeNotifierProvider<CartViewModel>.value(value: cartViewModel),
+          ChangeNotifierProvider<CheckoutViewModel>.value(
+            value: checkoutViewModel,
+          ),
+          ChangeNotifierProvider<SalesViewModel>.value(value: salesViewModel),
+          ChangeNotifierProvider<SettingsViewModel>.value(
+            value: settingsViewModel,
           ),
         ],
         child: const KasirkuApp(),
@@ -207,12 +256,12 @@ void main() {
       expect(authViewModel.isAuthenticated, isTrue);
       expect(find.byType(LoginView), findsNothing);
 
-      expect(find.text('Cashier'), findsOneWidget);
-
       expect(
-        find.text('Product catalog, cart, and checkout will be built here.'),
+        find.descendant(of: find.byType(AppBar), matching: find.text('Kasir')),
         findsOneWidget,
       );
+
+      expect(find.text('Pilih Produk'), findsOneWidget);
     });
 
     testWidgets('can navigate to product management', (tester) async {
@@ -248,24 +297,75 @@ void main() {
 
       expect(authViewModel.isAuthenticated, isTrue);
       expect(find.byType(LoginView), findsNothing);
-      expect(find.text('Cashier'), findsOneWidget);
+
+      expect(
+        find.descendant(of: find.byType(AppBar), matching: find.text('Kasir')),
+        findsOneWidget,
+      );
+
+      expect(find.text('Pilih Produk'), findsOneWidget);
+
       expect(sessionService.hasSession, isTrue);
     });
 
-    testWidgets('displays cashier profile and logs out', (tester) async {
+    testWidgets('displays store settings, reflects changes, and logs out', (
+      tester,
+    ) async {
       final user = await createTestUser();
 
       await sessionService.saveUserId(user.id);
 
       await pumpApplication(tester);
 
+      // Open Settings page.
       await tester.tap(find.text('Pengaturan'));
       await tester.pumpAndSettle();
 
+      // Verify initial store information.
+      expect(find.text('Informasi Toko'), findsOneWidget);
+      expect(find.text('KASIRKU POS'), findsNWidgets(2));
+      expect(find.text('Thank you for your purchase!'), findsOneWidget);
+
+      // Verify edit dialog can be opened.
+      await tester.tap(find.byTooltip('Ubah informasi toko'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Nama Toko'), findsOneWidget);
+      expect(find.text('Alamat Toko'), findsOneWidget);
+      expect(find.text('Nomor Telepon'), findsOneWidget);
+      expect(find.text('Footer Struk'), findsOneWidget);
+
+      // Close dialog.
+      await tester.tap(find.text('Batal'));
+      await tester.pumpAndSettle();
+
+      // Update store information using real SQLite operations.
+      final updateResult = await tester.runAsync(() async {
+        return settingsViewModel.updateSettings(
+          storeName: 'Toko Maju',
+          address: 'Jl. Diponegoro No. 5',
+          phone: '089876543210',
+          receiptFooter: 'Terima kasih sudah berbelanja!',
+        );
+      });
+
+      expect(updateResult, isTrue);
+
+      // Allow the UI to rebuild.
+      await tester.pump();
+
+      // Verify updated store information.
+      expect(find.text('Toko Maju'), findsNWidgets(2));
+      expect(find.text('Jl. Diponegoro No. 5'), findsOneWidget);
+      expect(find.text('089876543210'), findsOneWidget);
+      expect(find.text('Terima kasih sudah berbelanja!'), findsOneWidget);
+
+      // Verify cashier account information remains available.
       expect(find.text('Akun Kasir'), findsOneWidget);
       expect(find.text('Test Cashier'), findsNWidgets(2));
       expect(find.text('@cashier'), findsOneWidget);
 
+      // Verify logout still works.
       final logoutButton = find.text('Keluar dari akun');
 
       await tester.ensureVisible(logoutButton);
