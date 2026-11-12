@@ -15,6 +15,25 @@ class CartPanel extends StatelessWidget {
 
   final VoidCallback? onClose;
 
+  void _increaseQuantity(
+    BuildContext context,
+    CartViewModel viewModel,
+    CartItem item,
+  ) {
+    try {
+      viewModel.increaseQuantity(item);
+    } on CartStockException catch (error) {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(
+            content: Text(error.message),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+    }
+  }
+
   Future<void> _openCheckout(BuildContext context) async {
     final authViewModel = context.read<AuthViewModel>();
     final cashier = authViewModel.currentUser;
@@ -317,7 +336,7 @@ class CartPanel extends StatelessWidget {
                 key: ValueKey('cart-increase-$index'),
                 tooltip: 'Tambah jumlah',
                 visualDensity: VisualDensity.compact,
-                onPressed: () => viewModel.increaseQuantity(item),
+                onPressed: () => _increaseQuantity(context, viewModel, item),
                 icon: const Icon(Icons.add_circle_outline),
               ),
 

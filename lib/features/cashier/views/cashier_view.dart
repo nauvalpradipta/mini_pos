@@ -98,6 +98,10 @@ class _CashierViewState extends State<CashierView> {
       _showFeedbackMessage(
         '${product.name} berhasil ditambahkan ke keranjang.',
       );
+    } on CartStockException catch (error) {
+      if (!mounted) return;
+
+      _showFeedbackMessage(error.message);
     } catch (_) {
       if (!mounted) return;
 

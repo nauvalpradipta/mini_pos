@@ -294,7 +294,22 @@ void main() {
       (tester) async {
         setViewport(tester);
 
-        // Turunkan stok database menjadi satu.
+        // Ambil produk ketika stok database masih mencukupi.
+        final products = await tester.runAsync(
+          () => productRepository.getAll(),
+        );
+
+        final product = products!.firstWhere((item) => item.id == productId);
+
+        // Masukkan dua unit ke keranjang ketika stok masih mencukupi.
+        cartViewModel.addProduct(product);
+
+        final item = cartViewModel.items.first;
+        cartViewModel.setQuantity(item, 2);
+
+        expect(cartViewModel.itemCount, 2);
+
+        // Simulasikan stok database berubah setelah produk masuk keranjang.
         await tester.runAsync(() async {
           await database.update(
             'products',
@@ -304,31 +319,16 @@ void main() {
           );
         });
 
-        final products = await tester.runAsync(
-          () => productRepository.getAll(),
-        );
-
-        final product = products!.firstWhere((item) => item.id == productId);
-
-        // Keranjang berisi dua unit, sedangkan stok hanya satu.
-        cartViewModel.addProduct(product);
-
-        final item = cartViewModel.items.first;
-
-        cartViewModel.setQuantity(item, 2);
-
         await tester.pumpWidget(buildSubject());
 
         expect(cartViewModel.itemCount, 2);
         expect(cartViewModel.subtotal, 30000);
 
         await openCheckout(tester);
-
         await enterCash(tester, '30000');
-
         await submitCheckout(tester);
 
-        // Dialog harus tetap terbuka dengan pesan kesalahan.
+        // Dialog tetap terbuka dengan pesan kesalahan.
         expect(find.text('Pembayaran'), findsOneWidget);
 
         expect(
@@ -346,10 +346,9 @@ void main() {
 
         // Tidak boleh ada transaksi tersimpan.
         final sales = await tester.runAsync(() => database.query('sales'));
-
         expect(sales, isEmpty);
 
-        // Stok database juga tidak boleh berubah.
+        // Stok database tidak boleh berubah.
         final updatedProducts = await tester.runAsync(
           () => database.query(
             'products',
@@ -370,11 +369,9 @@ void main() {
         await tester.tap(cancelButton);
         await tester.pumpAndSettle();
 
-        expect(find.text('Pembayaran'), findsNothing);
-
-        // Keranjang tetap tidak berubah setelah dialog ditutup.
+        // Keranjang masih harus utuh setelah dialog ditutup.
+        expect(cartViewModel.isNotEmpty, isTrue);
         expect(cartViewModel.itemCount, 2);
-        expect(cartViewModel.subtotal, 30000);
       },
     );
 

@@ -253,5 +253,37 @@ void main() {
         );
       },
     );
+
+    testWidgets('shows stock warning when quantity exceeds available stock', (
+      tester,
+    ) async {
+      const limitedProduct = Product(
+        id: 2,
+        categoryId: 1,
+        name: 'Limited Coffee',
+        sellingPrice: 15000,
+        stock: 1,
+        isActive: true,
+        createdAt: 1,
+        updatedAt: 1,
+      );
+
+      cartViewModel.addProduct(limitedProduct);
+
+      await tester.pumpWidget(buildSubject());
+
+      await tester.tap(find.byKey(const ValueKey('cart-increase-0')));
+      await tester.pump();
+
+      expect(
+        find.text(
+          'Stok Limited Coffee tidak mencukupi. Diminta 2, tersedia 1.',
+        ),
+        findsOneWidget,
+      );
+
+      expect(cartViewModel.itemCount, 1);
+      expect(cartViewModel.items.first.quantity, 1);
+    });
   });
 }

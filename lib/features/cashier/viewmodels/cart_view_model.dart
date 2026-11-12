@@ -4,8 +4,20 @@ import '../../products/models/addon.dart';
 import '../../products/models/product.dart';
 import '../models/cart_item.dart';
 
+class CartStockException implements Exception {
+  const CartStockException(this.message);
+
+  final String message;
+
+  @override
+  String toString() => message;
+}
+
 class CartViewModel extends ChangeNotifier {
   final List<CartItem> _items = [];
+
+  final Map<int, int> _productStockById = {};
+  final Map<int, int> _addonStockById = {};
 
   // ---------------------------------------------------
   // GETTERS
@@ -87,14 +99,36 @@ class CartViewModel extends ChangeNotifier {
     );
 
     final existingIndex = _findMatchingItem(candidate);
+    final nextItems = List<CartItem>.of(_items);
 
     if (existingIndex >= 0) {
-      final existing = _items[existingIndex];
-
-      _items[existingIndex] = _copyWithQuantity(
-        existing,
-        existing.quantity + 1,
+      nextItems[existingIndex] = _copyWithQuantity(
+        nextItems[existingIndex],
+        nextItems[existingIndex].quantity + 1,
       );
+    } else {
+      nextItems.add(candidate);
+    }
+
+    final productStocks = {..._productStockById, product.id!: product.stock};
+
+    final addonStocks = {
+      ..._addonStockById,
+      for (final addon in selectedAddons) addon.id!: addon.stock,
+    };
+
+    // Validate the entire prospective cart before changing its contents.
+    _validateStock(
+      nextItems,
+      productStocks: productStocks,
+      addonStocks: addonStocks,
+    );
+
+    _productStockById.addAll(productStocks);
+    _addonStockById.addAll(addonStocks);
+
+    if (existingIndex >= 0) {
+      _items[existingIndex] = nextItems[existingIndex];
     } else {
       _items.add(candidate);
     }
@@ -111,9 +145,17 @@ class CartViewModel extends ChangeNotifier {
 
     _ensureItemExists(index);
 
-    final currentItem = _items[index];
+    final updatedItem = _copyWithQuantity(
+      _items[index],
+      _items[index].quantity + 1,
+    );
 
-    _items[index] = _copyWithQuantity(currentItem, currentItem.quantity + 1);
+    final nextItems = List<CartItem>.of(_items);
+    nextItems[index] = updatedItem;
+
+    _validateStock(nextItems);
+
+    _items[index] = updatedItem;
 
     notifyListeners();
   }
@@ -143,7 +185,14 @@ class CartViewModel extends ChangeNotifier {
 
     _ensureItemExists(index);
 
-    _items[index] = _copyWithQuantity(_items[index], quantity);
+    final updatedItem = _copyWithQuantity(_items[index], quantity);
+
+    final nextItems = List<CartItem>.of(_items);
+    nextItems[index] = updatedItem;
+
+    _validateStock(nextItems);
+
+    _items[index] = updatedItem;
 
     notifyListeners();
   }
@@ -214,6 +263,80 @@ class CartViewModel extends ChangeNotifier {
       quantity: quantity,
       addons: item.addons,
     );
+  }
+
+  void _validateStock(
+    List<CartItem> items, {
+    Map<int, int>? productStocks,
+    Map<int, int>? addonStocks,
+  }) {
+    final availableProducts = productStocks ?? _productStockById;
+    final availableAddons = addonStocks ?? _addonStockById;
+
+    final productRequirements = <int, int>{};
+    final productNames = <int, String>{};
+
+    final addonRequirements = <int, int>{};
+    final addonNames = <int, String>{};
+
+    // Accumulate stock requirements across every cart configuration.
+    for (final item in items) {
+      productRequirements.update(
+        item.productId,
+        (quantity) => quantity + item.quantity,
+        ifAbsent: () => item.quantity,
+      );
+
+      productNames[item.productId] = item.productName;
+
+      for (final addon in item.addons) {
+        final requiredQuantity = item.quantity * addon.quantityPerProduct;
+
+        addonRequirements.update(
+          addon.addonId,
+          (quantity) => quantity + requiredQuantity,
+          ifAbsent: () => requiredQuantity,
+        );
+
+        addonNames[addon.addonId] = addon.addonName;
+      }
+    }
+
+    // Validate accumulated product stock.
+    for (final entry in productRequirements.entries) {
+      final available = availableProducts[entry.key];
+
+      if (available == null) {
+        throw StateError(
+          'Informasi stok produk ${productNames[entry.key]} tidak tersedia.',
+        );
+      }
+
+      if (entry.value > available) {
+        throw CartStockException(
+          'Stok ${productNames[entry.key]} tidak mencukupi. '
+          'Diminta ${entry.value}, tersedia $available.',
+        );
+      }
+    }
+
+    // Validate accumulated add-on stock across all products.
+    for (final entry in addonRequirements.entries) {
+      final available = availableAddons[entry.key];
+
+      if (available == null) {
+        throw StateError(
+          'Informasi stok add-on ${addonNames[entry.key]} tidak tersedia.',
+        );
+      }
+
+      if (entry.value > available) {
+        throw CartStockException(
+          'Stok ${addonNames[entry.key]} tidak mencukupi. '
+          'Diminta ${entry.value}, tersedia $available.',
+        );
+      }
+    }
   }
 
   void _ensureItemExists(int index) {

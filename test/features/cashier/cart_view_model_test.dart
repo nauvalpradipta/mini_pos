@@ -159,6 +159,169 @@ void main() {
       expect(viewModel.subtotal, 27000);
     });
 
+    test(
+      'prevents adding a product beyond shared stock across configurations',
+      () {
+        final limitedProduct = Product(
+          id: 10,
+          categoryId: 1,
+          name: 'Limited Coffee',
+          sellingPrice: 15000,
+          stock: 2,
+          isActive: true,
+          createdAt: 100,
+          updatedAt: 100,
+        );
+
+        viewModel.addProduct(limitedProduct);
+
+        viewModel.addProduct(limitedProduct, selectedAddons: [extraShot]);
+
+        // The same product already consumes 2 units across 2 configurations.
+        expect(
+          () => viewModel.addProduct(limitedProduct),
+          throwsA(isA<CartStockException>()),
+        );
+
+        expect(viewModel.itemCount, 2);
+        expect(viewModel.uniqueItemCount, 2);
+        expect(
+          viewModel.items.fold<int>(0, (total, item) => total + item.quantity),
+          2,
+        );
+      },
+    );
+
+    test(
+      'prevents shared add-on stock from being exceeded across products',
+      () {
+        final firstProduct = Product(
+          id: 10,
+          categoryId: 1,
+          name: 'Coffee',
+          sellingPrice: 15000,
+          stock: 5,
+          isActive: true,
+          createdAt: 100,
+          updatedAt: 100,
+        );
+
+        final secondProduct = Product(
+          id: 11,
+          categoryId: 1,
+          name: 'Chocolate',
+          sellingPrice: 18000,
+          stock: 5,
+          isActive: true,
+          createdAt: 100,
+          updatedAt: 100,
+        );
+
+        final limitedAddon = Addon(
+          id: 10,
+          name: 'Limited Extra Shot',
+          additionalPrice: 5000,
+          stock: 1,
+          isActive: true,
+          createdAt: 100,
+          updatedAt: 100,
+        );
+
+        viewModel.addProduct(firstProduct, selectedAddons: [limitedAddon]);
+
+        expect(
+          () => viewModel.addProduct(
+            secondProduct,
+            selectedAddons: [limitedAddon],
+          ),
+          throwsA(isA<CartStockException>()),
+        );
+
+        expect(viewModel.itemCount, 1);
+        expect(viewModel.uniqueItemCount, 1);
+      },
+    );
+
+    test('prevents increasing quantity beyond product stock', () {
+      final limitedProduct = Product(
+        id: 10,
+        categoryId: 1,
+        name: 'Limited Coffee',
+        sellingPrice: 15000,
+        stock: 2,
+        isActive: true,
+        createdAt: 100,
+        updatedAt: 100,
+      );
+
+      viewModel.addProduct(limitedProduct);
+
+      viewModel.increaseQuantity(viewModel.items.first);
+
+      expect(viewModel.items.first.quantity, 2);
+
+      expect(
+        () => viewModel.increaseQuantity(viewModel.items.first),
+        throwsA(isA<CartStockException>()),
+      );
+
+      expect(viewModel.items.first.quantity, 2);
+    });
+
+    test('prevents increasing quantity beyond add-on stock', () {
+      final product = Product(
+        id: 10,
+        categoryId: 1,
+        name: 'Coffee',
+        sellingPrice: 15000,
+        stock: 5,
+        isActive: true,
+        createdAt: 100,
+        updatedAt: 100,
+      );
+
+      final limitedAddon = Addon(
+        id: 10,
+        name: 'Limited Extra Shot',
+        additionalPrice: 5000,
+        stock: 1,
+        isActive: true,
+        createdAt: 100,
+        updatedAt: 100,
+      );
+
+      viewModel.addProduct(product, selectedAddons: [limitedAddon]);
+
+      expect(
+        () => viewModel.increaseQuantity(viewModel.items.first),
+        throwsA(isA<CartStockException>()),
+      );
+
+      expect(viewModel.items.first.quantity, 1);
+    });
+
+    test('prevents setQuantity from exceeding product stock', () {
+      final limitedProduct = Product(
+        id: 10,
+        categoryId: 1,
+        name: 'Limited Coffee',
+        sellingPrice: 15000,
+        stock: 2,
+        isActive: true,
+        createdAt: 100,
+        updatedAt: 100,
+      );
+
+      viewModel.addProduct(limitedProduct);
+
+      expect(
+        () => viewModel.setQuantity(viewModel.items.first, 3),
+        throwsA(isA<CartStockException>()),
+      );
+
+      expect(viewModel.items.first.quantity, 1);
+    });
+
     test('increases item quantity', () {
       viewModel.addProduct(kopiSusu);
 
